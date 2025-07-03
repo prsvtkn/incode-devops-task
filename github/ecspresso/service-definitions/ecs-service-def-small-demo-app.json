@@ -1,0 +1,59 @@
+{
+  "availabilityZoneRebalancing": "DISABLED",
+  "deploymentConfiguration": {
+    "deploymentCircuitBreaker": {
+      "enable": false,
+      "rollback": false
+    },
+    "maximumPercent": 200,
+    "minimumHealthyPercent": 100
+  },
+  "deploymentController": {
+    "type": "ECS"
+  },
+  "desiredCount": 1,
+  "enableECSManagedTags": false,
+  "enableExecuteCommand": false,
+  "healthCheckGracePeriodSeconds": 0,
+  "launchType": "FARGATE",
+  "loadBalancers": [
+    {
+      "containerName": "PROJECT_PLACEHOLDER-{{ must_env `INFRA_ENV` }}-small-demo-app-container",
+      "containerPort": 5001,
+      "targetGroupArn": "{{ tfstate `module.network.aws_lb_target_group.small_demo_app_tg.arn` }}"
+    }
+  ],
+  "networkConfiguration": {
+    "awsvpcConfiguration": {
+      "assignPublicIp": "DISABLED",
+      "securityGroups": [
+        "{{ tfstate `module.network.aws_security_group.ecs_fargate_sg.id` }}"
+      ],
+      "subnets": [
+        "{{ tfstate `module.network.aws_subnet.private_subnet[0].id` }}"
+      ]
+    }
+  },
+  "platformFamily": "Linux",
+  "platformVersion": "LATEST",
+  "propagateTags": "NONE",
+  "schedulingStrategy": "REPLICA",
+  "tags": [
+    {
+      "key": "Project",
+      "value": "PROJECT_PLACEHOLDER"
+    },
+    {
+      "key": "Environment",
+      "value": "{{ must_env `INFRA_ENV` }}"
+    },
+    {
+      "key": "Deployed_by",
+      "value": "ecspresso"
+    },
+    {
+      "key": "Name",
+      "value": "PROJECT_PLACEHOLDER-{{ must_env `INFRA_ENV` }}-small-demo-app-service"
+    }
+  ]
+}

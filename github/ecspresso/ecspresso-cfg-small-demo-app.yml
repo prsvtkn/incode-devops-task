@@ -1,0 +1,10 @@
+region: {{ must_env `AWS_REGION` }}
+cluster: incode-{{ must_env `INFRA_ENV` }}-fargate-cluster
+service: incode-{{ must_env `INFRA_ENV` }}-small-demo-app-service
+service_definition: service-definitions/ecs-service-def-small-demo-app.json
+task_definition: task-definitions/ecs-task-def-small-demo-app.json
+timeout: "10m"
+plugins:
+  - name: tfstate
+    config:
+      url: s3://incode-{{ must_env `INFRA_ENV` }}-s3-terraform-state/main/terraform.tfstate

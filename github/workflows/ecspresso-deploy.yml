@@ -1,0 +1,78 @@
+name: Deploy app (ecspresso)
+
+on:
+  workflow_call:
+    inputs:
+      infra_env:
+        required: true
+        type: string
+      project:
+        required: true
+        type: string
+      aws_iam_role:
+        required: true
+        type: string
+      aws_region:
+        required: true
+        type: string
+      docker_tag:
+        required: true
+        type: string
+      ecspresso_cfg_path:
+        required: true
+        type: string
+
+env:
+  ECS_TASK_DEF_DIR: ".github/ecspresso/task-definitions"
+  ECS_SERVICE_DEF_DIR: ".github/ecspresso/service-definitions"
+  PGP_SECRET: ${{ secrets.PGP_SECRET_SIGNING_PASSPHRASE }}
+
+jobs:
+  ecspresso-fargate:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup environment variables
+      run: |
+        echo "INFRA_ENV=${{ inputs.infra_env }}" >> $GITHUB_ENV
+        echo "PROJECT=${{ inputs.project }}" >> $GITHUB_ENV
+        echo "AWS_REGION=${{ inputs.aws_region }}" >> $GITHUB_ENV
+        echo "DOCKER_TAG=${{ inputs.docker_tag }}" >> $GITHUB_ENV
+        echo "AWS_IAM_ROLE=$(gpg --decrypt --quiet --batch --passphrase "$PGP_SECRET" --output - <(echo "${{ inputs.aws_iam_role }}" | base64 --decode))" >> $GITHUB_ENV
+
+    - name: Prepare config files
+      run: |
+        for file in ${{ env.ECS_TASK_DEF_DIR }}/ecs-task-def-*.json; do
+          sed -i "s|INFRA_PLACEHOLDER|${{ env.INFRA_ENV }}|g" "$file"
+          sed -i "s|PROJECT_PLACEHOLDER|${{ env.PROJECT }}|g" "$file"
+        done
+        for file in ${{ env.ECS_SERVICE_DEF_DIR }}/ecs-service-def-*.json; do
+          sed -i "s|INFRA_PLACEHOLDER|${{ env.INFRA_ENV }}|g" "$file"
+          sed -i "s|PROJECT_PLACEHOLDER|${{ env.PROJECT }}|g" "$file"
+        done
+
+    - name: Assume IAM role
+      id: assume-role
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ env.AWS_IAM_ROLE }}
+        role-duration-seconds: 1200
+        role-session-name: github-action
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Install ecspresso
+      uses: kayac/ecspresso@v2
+      with:
+        version: v2.4.5
+
+    - name: Verify deployment
+      run: ecspresso verify --debug --config=${{ inputs.ecspresso_cfg_path }}
+
+    - name: Deploy applications
+      run: ecspresso deploy --debug --config=${{ inputs.ecspresso_cfg_path }}

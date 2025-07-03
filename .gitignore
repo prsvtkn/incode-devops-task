@@ -1,0 +1,28 @@
+# Secrets are not allowed in general
+*.key
+*.pem
+
+# Local .terraform directories
+**/.terraform/*
+tfplan
+
+# Terraformer files
+**/generated/*
+
+# Terraform lockfile
+.terraform.lock.hcl
+
+# .tfstate files
+*.tfstate
+*.tfstate.*
+
+# folders with temporary files
+**/tmp/*
+
+# act file for local testing
+act/
+*.vars
+*.secrets
+*.env
+
+*.bak

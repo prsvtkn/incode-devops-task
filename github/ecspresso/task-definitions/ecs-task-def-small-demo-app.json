@@ -1,0 +1,72 @@
+{
+    "containerDefinitions": [
+      {
+        "secrets": [
+          {
+            "name": "COMMENT",
+            "valueFrom": "it's better to use app_user or something like that, but master user is enough for small demo"
+          },
+          {
+            "name": "SMALL_DEMO_APP_DB_PASSWORD",
+            "valueFrom": "{{ secretsmanager_arn `PROJECT_PLACEHOLDER-INFRA_PLACEHOLDER-aurora-postgres-credentials` }}:password::"
+          },
+          {
+            "name": "SMALL_DEMO_APP_DB_USERNAME",
+            "valueFrom": "{{ secretsmanager_arn `PROJECT_PLACEHOLDER-INFRA_PLACEHOLDER-aurora-postgres-credentials` }}:username::"
+          }
+        ],
+        "environment": [
+          {
+            "name": "SMALL_DEMO_APP_DB_HOST",
+            "value": "{{ tfstate `module.aurora-postgresql.aws_rds_cluster.endpoint` }}"
+          },
+          {
+            "name": "SMALL_DEMO_APP_DB_PORT",
+            "value": "{{ tfstate `module.aurora-postgresql.aws_rds_cluster.port` }}"
+          },
+          {
+            "name": "SMALL_DEMO_APP_DB_NAME",
+            "value": "{{ tfstate `module.aurora-postgresql.aws_rds_cluster.database_name` }}"
+          },
+          {
+            "name": "SMALL_DEMO_APP_VALUE",
+            "value": "123"
+          }
+        ],
+        "essential": true,
+        "image": "{{ must_env `DOCKER_TAG` }}",
+        "logConfiguration": {
+          "logDriver": "awslogs",
+          "options": {
+            "awslogs-group": "/aws/ecs/PROJECT_PLACEHOLDER-{{ must_env `INFRA_ENV` }}-fargate",
+            "awslogs-region": "{{ must_env `AWS_REGION` }}",
+            "awslogs-stream-prefix": "PROJECT_PLACEHOLDER-{{ must_env `INFRA_ENV` }}-small-demo-app"
+          }
+        },
+        "cpu": 256,
+        "memory": 512,
+        "name": "PROJECT_PLACEHOLDER-{{ must_env `INFRA_ENV` }}-small-demo-app-container",
+        "portMappings": [
+          {
+            "name": "PROJECT_PLACEHOLDER-5001-http",
+            "appProtocol": "http",
+            "containerPort": 5001,
+            "hostPort": 5001,
+            "protocol": "tcp"
+          }
+        ],
+        "versionConsistency": ""
+      }
+    ],
+    "cpu": "1024",
+    "memory": "2048",
+    "executionRoleArn": "{{ tfstate `module.iam.aws_iam_role.ecs_task_execution_role.arn` }}",
+    "taskRoleArn": "{{ tfstate `module.iam.aws_iam_role.ecs_task_role.arn` }}",
+    "family": "PROJECT_PLACEHOLDER-{{ must_env `INFRA_ENV` }}-small-demo-app-task",
+    "ipcMode": "",
+    "networkMode": "awsvpc",
+    "pidMode": "",
+    "requiresCompatibilities": [
+      "FARGATE"
+    ]
+  }

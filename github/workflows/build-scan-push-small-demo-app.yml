@@ -1,0 +1,142 @@
+name: Build, Scan and Push
+
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - 'FOO/**'
+      - 'BAR/**'
+      - '.cicd/docker/small-demo-app.Dockerfile'
+      - '.github/workflows/build-scan-push-small-demo-app.yml'
+      - '.github/workflows/ecspresso-deploy.yml'
+      - '.github/ecspresso/task-definitions/ecs-task-def-small-demo-app.json'
+      - '.github/ecspresso/service-definitions/ecs-service-def-small-demo-app.json'
+      - '.github/ecspresso/ecspresso-cfg-small-demo-app.yml'
+      - '!RAB/**'
+      - '!OOF/**'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-centra-1
+  PROJECT: incode
+  DOTNET_VERSION: "9.0.x"
+  DOCKERFILE_PATH: ./.cicd/small-demo-app.Dockerfile
+  PROJECT_DIR: Incode/small-demo-app
+  OUTPUT_DIR: ./out/small-demo-app
+  DEV_ECR_REG_URL: 1234567890.dkr.ecr.eu-central-1.amazonaws.com/dev/small-demo-app
+  ECSPRESSO_CFG_PATH: .github/ecspresso/ecspresso-cfg-small-demo-app.yml
+
+jobs:
+  build-scan-push:
+    runs-on: ubuntu-latest
+    outputs:
+      infra_env: ${{ steps.prep-vars.outputs.infra_env }}
+      project: ${{ steps.prep-vars.outputs.project }}
+      aws_iam_role: ${{ steps.prep-vars.outputs.aws_iam_role }}
+      aws_region: ${{ steps.prep-vars.outputs.aws_region }}
+      docker_tag: ${{ steps.prep-vars.outputs.docker_tag }}
+      ecspresso_cfg_path: ${{ steps.prep-vars.outputs.ecspresso_cfg_path }}
+
+    steps:  
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Prepare variables
+      id: prep-vars
+      env:
+        PGP_SECRET: ${{ secrets.PGP_SECRET_SIGNING_PASSPHRASE }}
+      run: |
+        short_sha=$(git rev-parse --short ${{ github.sha }})
+        echo "ecspresso_cfg_path=${{ env.ECSPRESSO_CFG_PATH }}" >> $GITHUB_OUTPUT
+        if [[ "${{ github.ref_name }}" == "main" ]]; then
+          echo "DOCKER_TAG=${{ env.PRD_ECR_REG_URL }}:prd.$short_sha" >> $GITHUB_ENV
+          echo "docker_tag=${{ env.PRD_ECR_REG_URL }}:prd.$short_sha" >> $GITHUB_OUTPUT
+          echo "AWS_IAM_ROLE=${{ secrets.PRD_AWS_IAM_ROLE }}" >> $GITHUB_ENV
+          echo "aws_iam_role=$(gpg --symmetric --batch --passphrase "$PGP_SECRET" --output - <(echo "${{ secrets.PRD_AWS_IAM_ROLE }}") | base64 -w0)" >> $GITHUB_OUTPUT
+          echo "aws_region=${{ env.AWS_REGION }}" >> $GITHUB_OUTPUT
+          echo "infra_env=prd" >> $GITHUB_OUTPUT
+        elif [[ "${{ github.ref_name }}" == "uat" ]]; then
+          echo "DOCKER_TAG=${{ env.UAT_ECR_REG_URL }}:uat.$short_sha" >> $GITHUB_ENV
+          echo "docker_tag=${{ env.UAT_ECR_REG_URL }}:uat.$short_sha" >> $GITHUB_OUTPUT
+          echo "AWS_IAM_ROLE=${{ secrets.UAT_AWS_IAM_ROLE }}" >> $GITHUB_ENV
+          echo "aws_iam_role=$(gpg --symmetric --batch --passphrase "$PGP_SECRET" --output - <(echo "${{ secrets.UAT_AWS_IAM_ROLE }}") | base64 -w0)" >> $GITHUB_OUTPUT
+          echo "aws_region=${{ env.AWS_REGION }}" >> $GITHUB_OUTPUT
+          echo "infra_env=uat" >> $GITHUB_OUTPUT
+        else
+          echo "DOCKER_TAG=${{ env.DEV_ECR_REG_URL }}:dev.$short_sha" >> $GITHUB_ENV
+          echo "docker_tag=${{ env.DEV_ECR_REG_URL }}:dev.$short_sha" >> $GITHUB_OUTPUT
+          echo "AWS_IAM_ROLE=${{ secrets.DEV_AWS_IAM_ROLE }}" >> $GITHUB_ENV
+          echo "aws_iam_role=$(gpg --symmetric --batch --passphrase "$PGP_SECRET" --output - <(echo "${{ secrets.DEV_AWS_IAM_ROLE }}") | base64 -w0)" >> $GITHUB_OUTPUT
+          echo "aws_region=${{ env.AWS_REGION }}" >> $GITHUB_OUTPUT
+          echo "infra_env=dev" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Assume IAM role
+      id: assume-role
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ env.AWS_IAM_ROLE }}
+        role-duration-seconds: 1200
+        role-session-name: github-action
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+      with:
+        mask-password: true
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Build dotnet
+      run: dotnet build -o ${{ env.OUTPUT_DIR }} ${{ env.PROJECT_DIR }}
+
+    - name: Build docker image
+      run: docker build -t ${{ env.DOCKER_TAG }} -f ${{ env.DOCKERFILE_PATH }} . 
+    
+    - name: Install Snyk CLI
+      run: npm install -g snyk
+    
+    - name: Monitor Docker image in Snyk
+      run: snyk container monitor ${{ env.DOCKER_TAG }} --project-name=${{ env.PROJECT_DIR }}/container --severity-threshold=high --org=${{ secrets.SNYK_ORG_ID }}
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    
+    - name: Monitor Snyk Code Scan
+      run: snyk code test --org=${{ secrets.SNYK_ORG_ID }} --severity-threshold=high
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    
+    - name: Monitor Snyk Dependency Scan
+      run: snyk monitor --file=./Incode.sln --severity-threshold=high --org=${{ secrets.SNYK_ORG_ID }}
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+    - name: Push Docker image
+      run: docker push ${{ env.DOCKER_TAG }}
+
+  deploy:
+    needs: build-scan-push
+    if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/uat' || github.ref == 'refs/heads/main'
+    secrets: inherit
+    uses: ./.github/workflows/ecspresso-deploy.yml
+    with:
+      infra_env: ${{ needs.build-scan-push.outputs.infra_env }}
+      project: ${{ needs.build-scan-push.outputs.project }}
+      aws_iam_role: ${{ needs.build-scan-push.outputs.aws_iam_role }}
+      aws_region: ${{ needs.build-scan-push.outputs.aws_region }}
+      docker_tag: ${{ needs.build-scan-push.outputs.docker_tag }}
+      ecspresso_cfg_path: ${{ needs.build-scan-push.outputs.ecspresso_cfg_path }}
