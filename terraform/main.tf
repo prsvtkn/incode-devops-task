@@ -53,10 +53,8 @@ module "aurora-postgresql" {
 
   aws_region                     = var.aws_region
   vpc_id                         = module.network.vpc_id
-  allowed_cidrs                  = var.allowed_cidr_blocks
   cluster_identifier             = var.cluster_identifier
   database_name                  = var.database_name
-  db_credentials_secret_name     = var.db_credentials_secret_name
   db_subnet_group_name           = var.db_subnet_group_name
   availability_zones             = var.availability_zones
   aurora_cluster_members         = var.aurora_cluster_members

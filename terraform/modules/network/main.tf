@@ -84,13 +84,9 @@ resource "aws_route_table" "private" {
 
 }
 
-resource "aws_route_table_association" "private_subnet_association_1" {
-  subnet_id      = aws_subnet.private_subnet[0].id
-  route_table_id = aws_route_table.private.id
-}
-
-resource "aws_route_table_association" "private_subnet_association_2" {
-  subnet_id      = aws_subnet.private_subnet[1].id
+resource "aws_route_table_association" "private_subnet_association" {
+  for_each       = { for name, subnet in aws_subnet.private_subnet : name => subnet }
+  subnet_id      = each.value.id
   route_table_id = aws_route_table.private.id
 }
 
