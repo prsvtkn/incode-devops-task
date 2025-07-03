@@ -106,7 +106,7 @@ resource "aws_security_group" "alb_sg" {
     description = "Allow all outbound"
     from_port   = 0
     to_port     = 0
-    protocol    = "-1"
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
@@ -126,19 +126,23 @@ resource "aws_security_group" "ecs_fargate_sg" {
   }
 
   egress {
-    description = "Allow all to ALB"
+    description = "Allow all outbound to ALB and Aurora"
     from_port   = 0
     to_port     = 0
-    protocol    = "-1"
+    protocol    = "tcp"
     security_groups  = [aws_security_group.alb_sg.id, aws_security_group.aurora_sg.id]
   }
 
   egress {
-    description = "Allow all from Aurora"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    security_groups  = [aws_security_group.aurora_sg.id]
+    description = "Allow all outbound to endpoints"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    security_groups  = [
+      aws_vpc_endpoint.ecr_dkr.prefix_list_id,
+      aws_vpc_endpoint.s3sm.prefix_list_id,
+      aws_vpc_endpoint.logs.prefix_list_id
+    ]
   }
 
   tags = merge(var.common_tags, { Name = "${var.common_tags["Project"]}-${var.common_tags["Environment"]}-ecs-fargate-sg" })
@@ -161,7 +165,7 @@ resource "aws_security_group" "aurora_sg" {
     description = "Allow all to ECS"
     from_port   = 0
     to_port     = 0
-    protocol    = "-1"
+    protocol    = "tcp"
     security_groups  = [aws_security_group.ecs_fargate_sg.id]
   }
 }
@@ -272,7 +276,7 @@ resource "aws_vpc_endpoint" "ecr_api" {
 
 resource "aws_vpc_endpoint" "logs" {
   vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.ap-northeast-1.logs"
+  service_name        = "com.amazonaws.${var.aws_region}.logs"
   vpc_endpoint_type   = "Interface"
   subnet_ids          = [for subnet in aws_subnet.private_subnet : subnet.id]
   security_group_ids  = [aws_security_group.ecs_fargate_sg.id]
