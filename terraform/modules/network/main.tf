@@ -66,13 +66,9 @@ resource "aws_route_table" "public" {
   tags = merge(var.common_tags, { Name = "${var.common_tags["Project"]}-${var.common_tags["Environment"]}-public-rt" })
 }
 
-resource "aws_route_table_association" "public_subnet_association_1" {
-  subnet_id      = aws_subnet.public_subnet[0].id
-  route_table_id = aws_route_table.public.id
-}
-
-resource "aws_route_table_association" "public_subnet_association_2" {
-  subnet_id      = aws_subnet.public_subnet[1].id
+resource "aws_route_table_association" "public_subnet_association" {
+  for_each       = { for name, subnet in aws_subnet.public_subnet : name => subnet }
+  subnet_id      = each.value.id
   route_table_id = aws_route_table.public.id
 }
 
@@ -82,19 +78,6 @@ resource "aws_route_table" "private" {
   route {
     cidr_block     = "0.0.0.0/0"
     nat_gateway_id = aws_nat_gateway.main.id
-  }
-
-  route {
-    cidr_block         = var.datalake_cidr_block
-    transit_gateway_id = var.transit_gateway_id
-  }
-
-  dynamic "route" {
-    for_each = var.common_tags["Environment"] == "prd" ? [1] : []
-    content {
-      cidr_block         = var.datalake_us_cidr_block
-      transit_gateway_id = var.transit_gateway_id
-    }
   }
 
   tags = merge(var.common_tags, { Name = "${var.common_tags["Project"]}-${var.common_tags["Environment"]}-private-rt" })
