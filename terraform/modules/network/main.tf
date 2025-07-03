@@ -110,7 +110,7 @@ resource "aws_security_group" "alb_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(var.common_tags, { Name = "${var.base_name}-alb-sg" })
+  tags = merge(var.common_tags, { Name = "${var.common_tags["Project"]}-${var.common_tags["Environment"]}-alb-sg" })
 }
 
 resource "aws_security_group" "ecs_fargate_sg" {
@@ -130,7 +130,7 @@ resource "aws_security_group" "ecs_fargate_sg" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = [aws_security_group.alb_sg.id]
+    security_groups  = [aws_security_group.alb_sg.id, aws_security_group.aurora_sg.id]
   }
 
   egress {
@@ -138,10 +138,10 @@ resource "aws_security_group" "ecs_fargate_sg" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = [aws_security_group.aurora_sg.id]
+    security_groups  = [aws_security_group.aurora_sg.id]
   }
 
-  tags = merge(var.common_tags, { Name = "${var.base_name}-ecs-fargate-sg" })
+  tags = merge(var.common_tags, { Name = "${var.common_tags["Project"]}-${var.common_tags["Environment"]}-ecs-fargate-sg" })
 }
 
 resource "aws_security_group" "aurora_sg" {
@@ -154,7 +154,7 @@ resource "aws_security_group" "aurora_sg" {
     from_port   = 5432
     to_port     = 5432
     protocol    = "tcp"
-    cidr_blocks = [aws_security_group.ecs_fargate_sg.id]
+    security_groups  = [aws_security_group.ecs_fargate_sg.id]
   }
 
   egress {
@@ -162,7 +162,7 @@ resource "aws_security_group" "aurora_sg" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = [aws_security_group.ecs_fargate_sg.id]
+    security_groups  = [aws_security_group.ecs_fargate_sg.id]
   }
 }
 
@@ -226,7 +226,7 @@ resource "aws_vpc_endpoint" "s3gw" {
   vpc_endpoint_type = "Gateway"
   route_table_ids   = [aws_route_table.private.id]
 
-  tags = merge(var.common_tags, { Name = "${var.base_name}-vpc-endpoint-s3gw" })
+  tags = merge(var.common_tags, { Name = "${var.common_tags["Project"]}-${var.common_tags["Environment"]}-vpc-endpoint-s3gw" })
 }
 
 resource "aws_vpc_endpoint" "s3" {
@@ -236,7 +236,7 @@ resource "aws_vpc_endpoint" "s3" {
   subnet_ids          = [for subnet in aws_subnet.private_subnet : subnet.id]
   security_group_ids  = [aws_security_group.ecs_fargate_sg.id]
   private_dns_enabled = true
-  tags                = merge(var.common_tags, { Name = "${var.base_name}-vpc-endpoint-s3" })
+  tags                = merge(var.common_tags, { Name = "${var.common_tags["Project"]}-${var.common_tags["Environment"]}-vpc-endpoint-s3" })
 }
 
 resource "aws_vpc_endpoint" "s3sm" {
@@ -246,7 +246,7 @@ resource "aws_vpc_endpoint" "s3sm" {
   subnet_ids          = [for subnet in aws_subnet.private_subnet : subnet.id]
   security_group_ids  = [aws_security_group.ecs_fargate_sg.id]
   private_dns_enabled = true
-  tags                = merge(var.common_tags, { Name = "${var.base_name}-vpc-endpoint-sm" })
+  tags                = merge(var.common_tags, { Name = "${var.common_tags["Project"]}-${var.common_tags["Environment"]}-vpc-endpoint-sm" })
 }
 
 resource "aws_vpc_endpoint" "ecr_dkr" {
@@ -257,7 +257,7 @@ resource "aws_vpc_endpoint" "ecr_dkr" {
   subnet_ids          = [for subnet in aws_subnet.private_subnet : subnet.id]
   security_group_ids  = [aws_security_group.ecs_fargate_sg.id]
   private_dns_enabled = true
-  tags                = merge(var.common_tags, { Name = "${var.base_name}-vpc-endpoint-ecr-dkr" })
+  tags                = merge(var.common_tags, { Name = "${var.common_tags["Project"]}-${var.common_tags["Environment"]}-vpc-endpoint-ecr-dkr" })
 }
 
 resource "aws_vpc_endpoint" "ecr_api" {
@@ -267,7 +267,7 @@ resource "aws_vpc_endpoint" "ecr_api" {
   subnet_ids          = [for subnet in aws_subnet.private_subnet : subnet.id]
   security_group_ids  = [aws_security_group.ecs_fargate_sg.id]
   private_dns_enabled = true
-  tags                = merge(var.common_tags, { Name = "${var.base_name}-vpc-endpoint-ecr-api" })
+  tags                = merge(var.common_tags, { Name = "${var.common_tags["Project"]}-${var.common_tags["Environment"]}-vpc-endpoint-ecr-api" })
 }
 
 resource "aws_vpc_endpoint" "logs" {
@@ -277,5 +277,5 @@ resource "aws_vpc_endpoint" "logs" {
   subnet_ids          = [for subnet in aws_subnet.private_subnet : subnet.id]
   security_group_ids  = [aws_security_group.ecs_fargate_sg.id]
   private_dns_enabled = true
-  tags                = merge(var.common_tags, { Name = "${var.base_name}-vpc-endpoint-logs" })
+  tags                = merge(var.common_tags, { Name = "${var.common_tags["Project"]}-${var.common_tags["Environment"]}-vpc-endpoint-logs" })
 }

@@ -9,10 +9,10 @@ terraform {
   }
 
   backend "s3" {
-    bucket          = ""
-    key             = ""
-    region          = ""
-    dynamodb_table  = "" # This is a depreated parameter and I have to use "use_lockfile", but I have not researched how a bucket can be used to lock state
+    bucket         = ""
+    key            = ""
+    region         = ""
+    dynamodb_table = "" # This is a depreated parameter and I have to use "use_lockfile", but I have not researched how a bucket can be used to lock state
   }
 }
 

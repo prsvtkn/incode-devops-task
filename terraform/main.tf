@@ -14,7 +14,7 @@ module "network" {
 module "iam" {
   source = "./modules/iam"
 
-  aws_region              = var.aws_region
+  aws_region = var.aws_region
 
   common_tags = var.common_tags
 
