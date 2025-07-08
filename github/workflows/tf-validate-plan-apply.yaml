@@ -1,0 +1,159 @@
+name: Terraform Validation, Quality Checks, Build Plan, Apply Changes
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - uat
+  pull_request:
+    branches:
+      - main
+      - dev
+      - uat
+  workflow_dispatch:
+
+env:
+  TF_DIR: "./terraform/"
+  TF_ENV_DIR: "env"
+  TV_VERSION: 1.12.2
+
+jobs:
+  validate:
+    name: Validate Terraform Code
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate Checkov report
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: ${{ env.TF_DIR }}
+          soft_fail: true
+          output_format: cli,json
+          output_file_path: console,checkov_report.json
+
+      - name: Generate tfsec report
+        uses: aquasecurity/tfsec-action@master
+        with:
+          working_directory: ${{ env.TF_DIR }}
+          soft_fail: true
+
+      - name: Generate Snyk report
+        uses: snyk/actions/iac@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: monitor --severity-threshold=high ./terraform
+        continue-on-error: true
+
+  plan:
+    name: Generate a plan of changes
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    if: github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: ${{ env.TF_DIR }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Prepare variables
+        run: |
+          if [[ "${{ github.base_ref }}" == "main" ]]; then
+            echo "AWS_IAM_ROLE=${{ secrets.PRD_AWS_IAM_ROLE }}" >> $GITHUB_ENV
+            echo "INFRA_ENV=prd" >> $GITHUB_ENV
+          elif [[ "${{ github.base_ref }}" == "uat" ]]; then
+            echo "AWS_IAM_ROLE=${{ secrets.UAT_AWS_IAM_ROLE }}" >> $GITHUB_ENV
+            echo "INFRA_ENV=uat" >> $GITHUB_ENV
+          else
+            echo "AWS_IAM_ROLE=${{ secrets.DEV_AWS_IAM_ROLE }}" >> $GITHUB_ENV
+            echo "INFRA_ENV=dev" >> $GITHUB_ENV
+          fi
+
+      - name: Setup Terraform with specified version on the runner
+        uses: hashicorp/setup-terraform@v3
+        with:
+         terraform_version: ${{ env.TV_VERSION }}
+
+      - name: Assume IAM role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_IAM_ROLE }}
+          role-duration-seconds: 1200
+          role-session-name: github-action
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Terraform init
+        run: terraform init -backend-config=../${{ env.TF_ENV_DIR }}/${{ env.INFRA_ENV }}/providers-${{ env.INFRA_ENV }}.config
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        run: |
+          terraform plan -var-file=../${{ env.TF_ENV_DIR }}/${{ env.INFRA_ENV }}/${{ env.INFRA_ENV }}.tfvars
+
+  apply:
+    name: Apply infrastructure changes
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    if: github.ref == 'refs/heads/dev' ||	github.ref == 'refs/heads/uat' ||	github.ref == 'refs/heads/main' 
+    defaults:
+      run:
+        working-directory: ${{ env.TF_DIR }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Prepare variables
+        run: |
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            echo "AWS_IAM_ROLE=${{ secrets.PRD_AWS_IAM_ROLE }}" >> $GITHUB_ENV
+            echo "INFRA_ENV=prd" >> $GITHUB_ENV
+          elif [[ "${{ github.ref_name }}" == "uat" ]]; then
+            echo "AWS_IAM_ROLE=${{ secrets.UAT_AWS_IAM_ROLE }}" >> $GITHUB_ENV
+            echo "INFRA_ENV=uat" >> $GITHUB_ENV
+          else
+            echo "AWS_IAM_ROLE=${{ secrets.DEV_AWS_IAM_ROLE }}" >> $GITHUB_ENV
+            echo "INFRA_ENV=dev" >> $GITHUB_ENV
+          fi
+
+      - name: Setup Terraform with specified version on the runner
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TV_VERSION }}
+
+      - name: Assume IAM role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_IAM_ROLE }}
+          role-duration-seconds: 1200
+          role-session-name: github-action
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Terraform init
+        run: terraform init -backend-config=../${{ env.TF_ENV_DIR }}/${{ env.INFRA_ENV }}/providers-${{ env.INFRA_ENV }}.config
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        run: terraform plan -var-file=../${{ env.TF_ENV_DIR }}/${{ env.INFRA_ENV }}/${{ env.INFRA_ENV }}.tfvars
+
+      - name: Terraform apply iam updates
+        id: apply-iam
+        run: terraform apply -var-file=../${{ env.TF_ENV_DIR }}/${{ env.INFRA_ENV }}/${{ env.INFRA_ENV }}.tfvars -target=module.iam -auto-approve
+
+      - name: Terraform apply all updates
+        id: apply
+        run: terraform apply -var-file=../${{ env.TF_ENV_DIR }}/${{ env.INFRA_ENV }}/${{ env.INFRA_ENV }}.tfvars -auto-approve
